@@ -1,0 +1,144 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isMemberOfAccount(accountId) {
+      return isAuthenticated() && (
+        accountId == request.auth.uid || 
+        (exists(/databases/$(database)/documents/accounts/$(accountId)) && 
+         request.auth.uid in get(/databases/$(database)/documents/accounts/$(accountId)).data.members)
+      );
+    }
+
+    function isValidTransaction(data) {
+      return data.amount is number &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 500 &&
+             data.category is string &&
+             data.type in ['income', 'expense'] &&
+             data.userId == request.auth.uid &&
+             data.accountId is string &&
+             isMemberOfAccount(data.accountId) &&
+             (!('installmentId' in data) || (data.installmentId is string && data.installmentId.size() < 128)) &&
+             (!('installmentNumber' in data) || data.installmentNumber is number) &&
+             (!('totalInstallments' in data) || data.totalInstallments is number) &&
+             (!('recurringRuleId' in data) || (data.recurringRuleId is string && data.recurringRuleId.size() < 128));
+    }
+
+    function isValidBudget(data) {
+      return data.amount is number && data.amount >= 0 &&
+             data.categoryId is string &&
+             data.isRolling is bool &&
+             isMemberOfAccount(data.accountId);
+    }
+
+    function isValidAccount(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
+             data.ownerId is string &&
+             data.members is list &&
+             (!('memberEmails' in data) || data.memberEmails is map) &&
+             (!('invitedEmails' in data) || data.invitedEmails is list);
+    }
+
+    function isValidSettings(data) {
+      return data.userId == request.auth.uid &&
+             data.billingCycleStartDay is number && 
+             data.billingCycleStartDay >= 1 && 
+             data.billingCycleStartDay <= 31;
+    }
+
+    function isValidRule(data) {
+      return data.pattern is string && data.pattern.size() > 0 &&
+             data.categoryId is string &&
+             data.userId == request.auth.uid &&
+             isMemberOfAccount(data.accountId);
+    }
+
+    function isValidRecurringTransaction(data) {
+      return data.amount is number &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 500 &&
+             data.category is string &&
+             data.type in ['income', 'expense'] &&
+             data.frequency in ['monthly', 'bi-monthly', 'yearly'] &&
+             data.dayOfMonth is number && data.dayOfMonth >= 1 && data.dayOfMonth <= 31 &&
+             data.userId == request.auth.uid &&
+             isMemberOfAccount(data.accountId) &&
+             (!('notes' in data) || data.notes is string) &&
+             (!('endDate' in data) || (data.endDate is string || data.endDate == null)) &&
+             (!('lastGeneratedDate' in data) || (data.lastGeneratedDate is string || data.lastGeneratedDate == null));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /categorizationRules/{ruleId} {
+      allow read: if isAuthenticated() && (isMemberOfAccount(resource.data.accountId) || request.auth.token.email.lower() in get(/databases/$(database)/documents/accounts/$(resource.data.accountId)).data.invitedEmails);
+      allow create: if isAuthenticated() && isValidRule(request.resource.data);
+      allow update: if isAuthenticated() && isValidRule(request.resource.data) && isMemberOfAccount(resource.data.accountId);
+      allow delete: if isAuthenticated() && isMemberOfAccount(resource.data.accountId);
+    }
+
+    match /recurringTransactions/{recurringId} {
+      allow read: if isAuthenticated() && isMemberOfAccount(resource.data.accountId);
+      allow create: if isAuthenticated() && isValidRecurringTransaction(request.resource.data);
+      allow update: if isAuthenticated() && isValidRecurringTransaction(request.resource.data) && isMemberOfAccount(resource.data.accountId);
+      allow delete: if isAuthenticated() && isMemberOfAccount(resource.data.accountId);
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated() && (resource.data.accountId == request.auth.uid || isMemberOfAccount(resource.data.accountId));
+      allow create: if isAuthenticated() && isValidTransaction(request.resource.data);
+      allow update: if isAuthenticated() && isValidTransaction(request.resource.data) && 
+                    isMemberOfAccount(resource.data.accountId);
+      allow delete: if isAuthenticated() && isMemberOfAccount(resource.data.accountId);
+    }
+
+    match /budgets/{budgetId} {
+      allow read: if isAuthenticated() && (resource.data.accountId == request.auth.uid || isMemberOfAccount(resource.data.accountId));
+      allow create: if isAuthenticated() && isValidBudget(request.resource.data);
+      allow update: if isAuthenticated() && isValidBudget(request.resource.data) && 
+                    isMemberOfAccount(resource.data.accountId);
+      allow delete: if isAuthenticated() && isMemberOfAccount(resource.data.accountId);
+    }
+
+    match /accounts/{accountId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == accountId || 
+        request.auth.uid in resource.data.members ||
+        (resource.data.keys().hasAll(['invitedEmails']) && request.auth.token.email.lower() in resource.data.invitedEmails)
+      );
+      allow create: if isAuthenticated() && isValidAccount(request.resource.data) && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidAccount(request.resource.data) && 
+                    (resource.data.ownerId == request.auth.uid || request.auth.uid in resource.data.members || (resource.data.keys().hasAll(['invitedEmails']) && request.auth.token.email.lower() in resource.data.invitedEmails));
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      
+      // Allow access to the categories subcollection
+      match /categories/{categoryId} {
+        allow read: if isAuthenticated() && (request.auth.uid == accountId || isMemberOfAccount(accountId));
+        allow write: if isAuthenticated() && (request.auth.uid == accountId || isMemberOfAccount(accountId));
+      }
+    }
+
+    match /settings/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isValidSettings(request.resource.data);
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner(userId);
+    }
+  }
+}

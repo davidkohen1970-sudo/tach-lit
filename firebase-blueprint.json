@@ -1,0 +1,135 @@
+{
+  "entities": {
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A financial transaction (income or expense)",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "notes": { "type": "string" },
+        "userId": { "type": "string" },
+        "accountId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "installmentId": { "type": "string" },
+        "installmentNumber": { "type": "number" },
+        "totalInstallments": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "amount", "description", "category", "type", "userId", "accountId"]
+    },
+    "Budget": {
+      "title": "Budget",
+      "description": "A budget limit for a category",
+      "type": "object",
+      "properties": {
+        "categoryId": { "type": "string" },
+        "amount": { "type": "number" },
+        "isRolling": { "type": "boolean" },
+        "userId": { "type": "string" },
+        "accountId": { "type": "string" }
+      },
+      "required": ["categoryId", "amount", "isRolling", "userId", "accountId"]
+    },
+    "Account": {
+      "title": "Account",
+      "description": "A shared or personal account",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "members": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["name", "ownerId", "members"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "User preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "billingCycleStartDay": { "type": "number" },
+        "accountId": { "type": "string" }
+      },
+      "required": ["userId", "billingCycleStartDay", "accountId"]
+    },
+    "CategorizationRule": {
+      "title": "CategorizationRule",
+      "description": "Rule for automatic expense classification",
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "accountId": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pattern", "categoryId", "accountId", "userId"]
+    },
+    "RecurringTransaction": {
+      "title": "RecurringTransaction",
+      "description": "A rule for generating recurring transactions",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "frequency": { "type": "string", "enum": ["monthly", "bi-monthly", "yearly"] },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "dayOfMonth": { "type": "number" },
+        "lastGeneratedDate": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" },
+        "accountId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["description", "amount", "category", "type", "frequency", "startDate", "dayOfMonth", "userId", "accountId"]
+    }
+  },
+  "firestore": {
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Collection of all transactions"
+    },
+    "/recurringTransactions/{recurringId}": {
+      "schema": "RecurringTransaction",
+      "description": "Collection of recurring transaction rules"
+    },
+    "/budgets/{budgetId}": {
+      "schema": "Budget",
+      "description": "Collection of budget limits"
+    },
+    "/accounts/{accountId}": {
+      "schema": "Account",
+      "description": "Collection of shared accounts"
+    },
+    "/settings/{userId}": {
+      "schema": "UserSettings",
+      "description": "User settings"
+    },
+    "/categorizationRules/{ruleId}": {
+      "schema": "CategorizationRule",
+      "description": "Collection of classification rules"
+    },
+    "/users/{userId}": {
+      "schema": {
+        "title": "User",
+        "type": "object",
+        "properties": {
+          "uid": { "type": "string" },
+          "email": { "type": "string" },
+          "displayName": { "type": "string" },
+          "photoURL": { "type": "string" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["uid", "email"]
+      },
+      "description": "User profiles for mapping emails to UIDs"
+    }
+  }
+}

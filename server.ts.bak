@@ -1,0 +1,97 @@
+import express from "express";
+import path from "path";
+import { GoogleGenAI } from "@google/genai";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  app.use(express.json({ limit: '50mb' }));
+
+  // Middleware to log requests
+  app.use((req, res, next) => {
+    if (req.path.includes('/ai/') || req.path.includes('/gemini')) {
+      console.log(`[AI Request] ${req.method} ${req.path}`, req.body?.action || '');
+    }
+    next();
+  });
+
+  // Check for multiple possible env var names to avoid user confusion
+  const rawKey = 
+    process.env.MY_GEMINI_API_KEY || 
+    process.env.GOOGLE_API_KEY || 
+    process.env.VITE_MY_GEMINI_API_KEY ||
+    "";
+
+  // Strip possible quotes, non-printing characters and trim
+  const API_KEY = rawKey.replace(/[\u200B-\u200D\uFEFF]/g, '').trim().replace(/^["']|["']$/g, '');
+
+  console.log("--- AI Connection Debug ---");
+  console.log("MY_GEMINI_API_KEY present:", !!process.env.MY_GEMINI_API_KEY);
+  console.log("GOOGLE_API_KEY present:", !!process.env.GOOGLE_API_KEY);
+  console.log("VITE_MY_GEMINI_API_KEY present:", !!process.env.VITE_MY_GEMINI_API_KEY);
+
+  if (!API_KEY) {
+    console.warn("⚠️ No API key found in any environment variable.");
+  } else if (API_KEY.includes('your_api_key') || API_KEY.length < 20) {
+    console.warn("⚠️ API key looks like a placeholder or is too short:", API_KEY);
+  } else if (!API_KEY.startsWith('AIza')) {
+    console.warn("⚠️ API key does not start with 'AIza', it might be invalid.");
+  } else {
+    const source = process.env.MY_GEMINI_API_KEY ? "MY_GEMINI_API_KEY" : 
+                   process.env.GOOGLE_API_KEY ? "GOOGLE_API_KEY" : 
+                   "VITE_MY_GEMINI_API_KEY";
+    console.log(`✅ AI key loaded from ${source}. Length: ${API_KEY.length}, Starts with: ${API_KEY.substring(0, 6)}... Ends with: ...${API_KEY.substring(API_KEY.length - 4)}`);
+  }
+  console.log("---------------------------");
+
+  const ai = new GoogleGenAI({
+    apiKey: API_KEY
+  });
+
+  // Model configuration
+  const MODEL_NAME = "gemini-3-flash-preview";
+
+  /**
+   * Validates if the API key is present and looks valid
+   */
+  function validateApiKey(res: any) {
+    if (!API_KEY || API_KEY.length < 20 || API_KEY.includes('your_api_key')) {
+      console.error("❌ Invalid or missing API key in server.ts. Current key value:", API_KEY ? `${API_KEY.substring(0, 4)}...` : 'EMPTY');
+      res.status(401).json({ 
+        error: "AI_KEY_MISSING",
+        message: "מפתח ה-API חסר או לא תקין. יש לוודא שהגדרתם את MY_GEMINI_API_KEY ב-Settings של AI Studio או בקובץ ה-.env של השרת."
+      });
+      return false;
+    }
+    return true;
+  }
+
+  // Serve frontend in production
+  if (process.env.NODE_ENV === "production") {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  } else {
+    // Vite middleware for dev
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error("Failed to start server:", err);
+});
