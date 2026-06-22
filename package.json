@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "node resize-logo.js && vite build && (esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs || echo 'Skip server compilation')",
+    "build": "scripts": {
+  "build": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist/server.cjs"
+},
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
